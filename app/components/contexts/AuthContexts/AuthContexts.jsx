@@ -19,27 +19,39 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [token, setToken] = useState(localStorage.getItem('token'));
+    const [token, setToken] = useState(null); // শুরুতে null
+
+    // ✅ localStorage থেকে token নেওয়ার জন্য useEffect
+    useEffect(() => {
+        // শুধু browser এ চলবে
+        if (typeof window !== 'undefined') {
+            const storedToken = localStorage.getItem('token');
+            setToken(storedToken);
+        }
+    }, []);
 
     // set token from localStorage
     useEffect(() => {
-        if (token) {
-            localStorage.setItem('token', token);
-            axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        } else {
-            localStorage.removeItem('token');
-            delete axiosInstance.defaults.headers.common['Authorization'];
+        // শুধু browser এ চলবে
+        if (typeof window !== 'undefined') {
+            if (token) {
+                localStorage.setItem('token', token);
+                axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            } else {
+                localStorage.removeItem('token');
+                delete axiosInstance.defaults.headers.common['Authorization'];
+            }
         }
     }, [token]);
 
-
+    // load user effect
     useEffect(() => {
         const loadUser = async () => {
             if (token && !user) {
                 try {
                     setLoading(true);
 
-                    const tokenData = JSON.parse(atob(token.split('.')[1])); // JWT decode
+                    const tokenData = JSON.parse(atob(token.split('.')[1]));
                     const userId = tokenData.id;
                     
                     const response = await axiosInstance.get(`/users/${userId}`);
@@ -106,15 +118,37 @@ export const AuthProvider = ({ children }) => {
     // sign out 
     const signout = async () => {
         try {
-            // optional: backend  signout request 
-            // await axiosInstance.post('/users/signout');
+            if (token) {
+                try {
+                    await axiosInstance.post('/users/signout');
+                } catch (error) {
+                    console.error('Backend signout error:', error);
+                }
+            }
         } finally {
+            // ✅ শুধু browser এ localStorage clear
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+                localStorage.removeItem('userName');
+                localStorage.removeItem('userEmail');
+                localStorage.removeItem('userRole');
+                localStorage.removeItem('lastLogin');
+            }
+            
             setToken(null);
             setUser(null);
+            delete axiosInstance.defaults.headers.common['Authorization'];
             toast.success('Logged out successfully');
+            
+            // redirect - useRouter বা window.location
+            if (typeof window !== 'undefined') {
+                window.location.href = '/signin';
+            }
         }
     };
 
+    // ... rest of your functions remain the same
 
     const updateUser = async (userId, data) => {
         try {
@@ -122,7 +156,6 @@ export const AuthProvider = ({ children }) => {
             const response = await axiosInstance.patch(`/users/${userId}`, data);
             
             if (response.data.success) {
-
                 if (user?.id === userId) {
                     setUser(prev => ({ ...prev, ...response.data.data }));
                 }
@@ -137,7 +170,6 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
         }
     };
-
 
     const uploadProfilePicture = async (file) => {
         try {
@@ -162,7 +194,6 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-
     const deleteProfilePicture = async () => {
         try {
             setLoading(true);
@@ -182,14 +213,12 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-
     const deleteUser = async (userId) => {
         try {
             setLoading(true);
             const response = await axiosInstance.delete(`/users/${userId}`);
             
             if (response.data.success) {
-
                 if (user?.id === userId) {
                     signout();
                 }
@@ -205,7 +234,6 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-
     const getUserById = async (userId) => {
         try {
             const response = await axiosInstance.get(`/users/${userId}`);
@@ -216,7 +244,6 @@ export const AuthProvider = ({ children }) => {
             return { success: false, error: message };
         }
     };
-
 
     const getUserByEmail = async (email) => {
         try {
@@ -229,7 +256,6 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-
     const getAllUsers = async () => {
         try {
             const response = await axiosInstance.get('/users');
@@ -238,6 +264,17 @@ export const AuthProvider = ({ children }) => {
             const message = error.response?.data?.message || 'Failed to fetch users';
             toast.error(message);
             return { success: false, error: message };
+        }
+    };
+
+    const refreshUser = async () => {
+        if (user?.id) {
+            try {
+                const response = await axiosInstance.get(`/users/${user.id}`);
+                setUser(response.data.data);
+            } catch (error) {
+                console.error('Refresh failed:', error);
+            }
         }
     };
 
@@ -265,16 +302,7 @@ export const AuthProvider = ({ children }) => {
         deleteProfilePicture,
         
         // helper
-        refreshUser: async () => {
-            if (user?.id) {
-                try {
-                    const response = await axiosInstance.get(`/users/${user.id}`);
-                    setUser(response.data.data);
-                } catch (error) {
-                    console.error('Refresh failed:', error);
-                }
-            }
-        }
+        refreshUser,
     };
 
     return (

@@ -60,6 +60,12 @@ const EditProfile = () => {
 
     const userId = getUserId();
 
+    // টোকেন পাওয়া
+    const getToken = useCallback(() => {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem('token');
+    }, []);
+
     // ইউজার ডাটা ফেচ
     useEffect(() => {
         if (!userId) {
@@ -70,6 +76,12 @@ const EditProfile = () => {
         const fetchUserData = async () => {
             try {
                 setLoading(true);
+                const token = getToken();
+                if (!token) {
+                    router.push('/signin');
+                    return;
+                }
+
                 const res = await axiosInstance.get(`/users/${userId}`);
                 
                 if (res.data.success) {
@@ -85,7 +97,9 @@ const EditProfile = () => {
             } catch (error) {
                 console.error('Failed to fetch user:', error);
                 toast.error('Failed to load profile');
-                if (error.response?.status === 404) {
+                if (error.response?.status === 401) {
+                    router.push('/signin');
+                } else if (error.response?.status === 404) {
                     router.push('/404');
                 }
             } finally {
@@ -94,7 +108,7 @@ const EditProfile = () => {
         };
 
         fetchUserData();
-    }, [userId, router]);
+    }, [userId, router, getToken]);
 
     // ভ্যালিডেশন ফাংশন
     const validateForm = () => {
@@ -106,10 +120,12 @@ const EditProfile = () => {
         }
 
         // ইমেইল ভ্যালিডেশন (যদি এডিট মোডে থাকে)
-        if (editMode.email && !formData.email) {
-            newErrors.email = 'Email is required';
-        } else if (editMode.email && !/\S+@\S+\.\S+/.test(formData.email)) {
-            newErrors.email = 'Email is invalid';
+        if (editMode.email) {
+            if (!formData.email) {
+                newErrors.email = 'Email is required';
+            } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+                newErrors.email = 'Email is invalid';
+            }
         }
 
         // পাসওয়ার্ড ভ্যালিডেশন (যদি পাসওয়ার্ড চেঞ্জ করতে চায়)
@@ -133,136 +149,176 @@ const EditProfile = () => {
         return Object.keys(newErrors).length === 0;
     };
 
-    // প্রোফাইল পিকচার আপলোড
-    const handleProfilePictureUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+// প্রোফাইল পিকচার আপলোড ফাংশন আপডেট করুন
+const handleProfilePictureUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-        // ফাইল সাইজ চেক (10MB)
-        if (file.size > 10 * 1024 * 1024) {
-            toast.error('File size must be less than 10MB');
-            return;
-        }
+    // ফাইল সাইজ চেক (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        toast.error('File size must be less than 10MB');
+        return;
+    }
 
-        // ফাইল টাইপ চেক
-        if (!file.type.startsWith('image/')) {
-            toast.error('Only image files are allowed');
-            return;
-        }
+    // ফাইল টাইপ চেক
+    if (!file.type.startsWith('image/')) {
+        toast.error('Only image files are allowed');
+        return;
+    }
 
-        const formData = new FormData();
-        formData.append('profile_picture', file);
+    const formData = new FormData();
+    formData.append('profile_picture', file);
+    formData.append('userId', userId);  // 🔥 userId ফর্মডাটায় যোগ করুন
 
-        try {
-            setUploading(true);
-            const response = await axiosInstance.patch('/users/profile-picture', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-
-            if (response.data.success) {
-                setFormData(prev => ({
-                    ...prev,
-                    profile_picture_url: response.data.data.profile_picture_url
-                }));
-                toast.success('Profile picture updated successfully');
+    try {
+        setUploading(true);
+        
+        const response = await axiosInstance.patch('/users/profile-picture', formData, {
+            headers: { 
+                'Content-Type': 'multipart/form-data'
+                // 🔥 Authorization header ছাড়া
             }
-        } catch (error) {
-            console.error('Upload error:', error);
-            toast.error(error.response?.data?.message || 'Failed to upload picture');
-        } finally {
-            setUploading(false);
-        }
-    };
-
-    // প্রোফাইল পিকচার ডিলিট
-    const handleDeletePicture = async () => {
-        const result = await Swal.fire({
-            title: 'Delete Picture?',
-            text: "Are you sure you want to delete your profile picture?",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#ef4444',
-            cancelButtonColor: '#10b981',
-            confirmButtonText: 'Yes, delete it!',
-            background: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
-            color: document.documentElement.classList.contains('dark') ? '#ffffff' : '#111827',
         });
 
-        if (result.isConfirmed) {
-            try {
-                await axiosInstance.delete('/users/profile-picture');
-                setFormData(prev => ({ ...prev, profile_picture_url: '' }));
-                toast.success('Profile picture deleted');
-            } catch (error) {
-                console.error('Delete error:', error);
-                toast.error('Failed to delete picture');
+        if (response.data.success) {
+            setFormData(prev => ({
+                ...prev,
+                profile_picture_url: response.data.data.profile_picture_url
+            }));
+            
+            // localStorage আপডেট
+            const userFromLS = localStorage.getItem('user');
+            if (userFromLS) {
+                const userData = JSON.parse(userFromLS);
+                userData.profile_picture_url = response.data.data.profile_picture_url;
+                localStorage.setItem('user', JSON.stringify(userData));
             }
+            
+            toast.success('Profile picture updated successfully');
         }
-    };
+    } catch (error) {
+        console.error('Upload error:', error);
+        toast.error(error.response?.data?.message || 'Failed to upload picture');
+    } finally {
+        setUploading(false);
+    }
+};
 
-    // ফর্ম সাবমিট
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+// প্রোফাইল পিকচার ডিলিট ফাংশন আপডেট করুন
+const handleDeletePicture = async () => {
+    const result = await Swal.fire({
+        title: 'Delete Picture?',
+        text: "Are you sure you want to delete your profile picture?",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#10b981',
+        confirmButtonText: 'Yes, delete it!',
+    });
+
+    if (result.isConfirmed) {
+        try {
+            // 🔥 body তে userId পাঠান
+            await axiosInstance.delete('/users/profile-picture', {
+                data: { userId }  // DELETE request এ body পাঠাতে data ব্যবহার করুন
+            });
+            
+            setFormData(prev => ({ ...prev, profile_picture_url: '' }));
+            
+            // localStorage আপডেট
+            const userFromLS = localStorage.getItem('user');
+            if (userFromLS) {
+                const userData = JSON.parse(userFromLS);
+                userData.profile_picture_url = '';
+                localStorage.setItem('user', JSON.stringify(userData));
+            }
+            
+            toast.success('Profile picture deleted');
+        } catch (error) {
+            console.error('Delete error:', error);
+            toast.error('Failed to delete picture');
+        }
+    }
+};
+
+// ইউজার আপডেট ফাংশন (email & name update)
+const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
+
+    // চেক করা কি কিছু আপডেট করতে চায়
+    if (!editMode.name && !editMode.email && !editMode.password) {
+        toast.error('No changes to update');
+        return;
+    }
+
+    try {
+        setSubmitting(true);
         
-        if (!validateForm()) return;
+        // আপডেটের জন্য ডাটা প্রস্তুত
+        const updateData = {};
+        if (editMode.name && formData.name !== user?.name) {
+            updateData.name = formData.name;
+        }
+        if (editMode.email && formData.email !== user?.email) {
+            updateData.email = formData.email;
+        }
+        if (editMode.password) {
+            updateData.old_password = formData.old_password;
+            updateData.new_password = formData.new_password;
+            updateData.confirm_new_password = formData.confirm_new_password;
+        }
 
-        // চেক করা কি কিছু আপডেট করতে চায়
-        if (!editMode.name && !editMode.email && !editMode.password) {
+        // যদি কিছু না বদলায়
+        if (Object.keys(updateData).length === 0) {
             toast.error('No changes to update');
             return;
         }
 
-        try {
-            setSubmitting(true);
+        // 🔥 Authorization header ছাড়া
+        const response = await axiosInstance.patch(`/users/${userId}`, updateData);
+
+        if (response.data.success) {
+            // লোকাল স্টোরেজ আপডেট
+            const userFromLS = localStorage.getItem('user');
+            if (userFromLS) {
+                const userData = JSON.parse(userFromLS);
+                const updatedUser = { ...userData, ...response.data.data };
+                localStorage.setItem('user', JSON.stringify(updatedUser));
+            }
+
+            // ইউজার স্টেট আপডেট
+            setUser(prev => ({ ...prev, ...response.data.data }));
+            setFormData(prev => ({ ...prev, ...response.data.data }));
+
+            toast.success('Profile updated successfully');
             
-            // আপডেটের জন্য ডাটা প্রস্তুত
-            const updateData = {};
-            if (editMode.name) updateData.name = formData.name;
-            if (editMode.email) updateData.email = formData.email;
+            // এডিট মোড অফ
+            setEditMode({ name: false, email: false, password: false });
+            
+            // পাসওয়ার্ড ফিল্ড ক্লিয়ার
             if (editMode.password) {
-                updateData.old_password = formData.old_password;
-                updateData.new_password = formData.new_password;
-                updateData.confirm_new_password = formData.confirm_new_password;
+                setFormData(prev => ({
+                    ...prev,
+                    old_password: '',
+                    new_password: '',
+                    confirm_new_password: ''
+                }));
             }
 
-            const response = await axiosInstance.patch(`/users/${userId}`, updateData);
-
-            if (response.data.success) {
-                // লোকাল স্টোরেজ আপডেট
-                const userFromLS = localStorage.getItem('user');
-                if (userFromLS) {
-                    const userData = JSON.parse(userFromLS);
-                    const updatedUser = { ...userData, ...response.data.data };
-                    localStorage.setItem('user', JSON.stringify(updatedUser));
-                }
-
-                toast.success('Profile updated successfully');
-                
-                // এডিট মোড অফ
-                setEditMode({ name: false, email: false, password: false });
-                
-                // পাসওয়ার্ড ফিল্ড ক্লিয়ার
-                if (editMode.password) {
-                    setFormData(prev => ({
-                        ...prev,
-                        old_password: '',
-                        new_password: '',
-                        confirm_new_password: ''
-                    }));
-                }
-
-                // ২ সেকেন্ড পর প্রোফাইল পেজে রিডাইরেক্ট
-                setTimeout(() => {
-                    router.push('/profile');
-                }, 2000);
-            }
-        } catch (error) {
-            console.error('Update error:', error);
-            toast.error(error.response?.data?.message || 'Failed to update profile');
-        } finally {
-            setSubmitting(false);
+            // ২ সেকেন্ড পর প্রোফাইল পেজে রিডাইরেক্ট
+            setTimeout(() => {
+                router.push('/profile');
+            }, 2000);
         }
-    };
+    } catch (error) {
+        console.error('Update error:', error);
+        toast.error(error.response?.data?.message || 'Failed to update profile');
+    } finally {
+        setSubmitting(false);
+    }
+};
 
     // ক্যান্সেল হ্যান্ডলার
     const handleCancel = () => {
@@ -297,7 +353,7 @@ const EditProfile = () => {
     }
 
     return (
-        <div className="min-h-screen bg-white dark:bg-black py-8 sm:py-12 lg:py-16">
+        <div className="min-h-screen mt-10 bg-white dark:bg-black py-8 sm:py-12 lg:py-16">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl">
                 
                 {/* হেডার */}

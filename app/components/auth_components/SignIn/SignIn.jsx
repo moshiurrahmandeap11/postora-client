@@ -114,7 +114,7 @@ const SignIn = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-br from-green-50 via-white to-green-100 dark:from-green-950 dark:via-black dark:to-green-900">
+        <div className="min-h-screen mt-10 flex items-center justify-center p-4 bg-linear-to-br from-green-50 via-white to-green-100 dark:from-green-950 dark:via-black dark:to-green-900">
             
             {/* ডেকোরেটিভ এলিমেন্টস */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
