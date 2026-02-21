@@ -19,59 +19,93 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [token, setToken] = useState(null); // শুরুতে null
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
+    const [token, setToken] = useState(null);
 
-    // ✅ localStorage থেকে token নেওয়ার জন্য useEffect
+    // প্রথমে localStorage থেকে token নিন
     useEffect(() => {
-        // শুধু browser এ চলবে
         if (typeof window !== 'undefined') {
             const storedToken = localStorage.getItem('token');
+            console.log('Stored token:', storedToken); // ডিবাগ করার জন্য
             setToken(storedToken);
+            
+            // যদি token না থাকে, তাহলে loading শেষ করুন
+            if (!storedToken) {
+                setLoading(false);
+                setInitialLoadDone(true);
+            }
+        } else {
+            setLoading(false);
+            setInitialLoadDone(true);
         }
     }, []);
 
-    // set token from localStorage
+    // token set করার জন্য useEffect
     useEffect(() => {
-        // শুধু browser এ চলবে
-        if (typeof window !== 'undefined') {
-            if (token) {
-                localStorage.setItem('token', token);
-                axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            } else {
-                localStorage.removeItem('token');
-                delete axiosInstance.defaults.headers.common['Authorization'];
-            }
+        if (typeof window !== 'undefined' && token) {
+            localStorage.setItem('token', token);
+            axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         }
     }, [token]);
 
     // load user effect
     useEffect(() => {
         const loadUser = async () => {
-            if (token && !user) {
-                try {
-                    setLoading(true);
+            // যদি token না থাকে, তাহলে কিছু করবেন না
+            if (!token) {
+                return;
+            }
 
-                    const tokenData = JSON.parse(atob(token.split('.')[1]));
-                    const userId = tokenData.id;
-                    
-                    const response = await axiosInstance.get(`/users/${userId}`);
-                    setUser(response.data.data);
-                } catch (error) {
-                    console.error('Failed to load user:', error);
-                    if (error.response?.status === 401) {
-                        signout();
-                        toast.error('Session expired. Please login again.');
-                    }
-                } finally {
-                    setLoading(false);
-                }
-            } else {
+            // যদি user আগে থেকে লোড করা থাকে, তাহলে আবার লোড করবেন না
+            if (user) {
                 setLoading(false);
+                setInitialLoadDone(true);
+                return;
+            }
+
+            try {
+                setLoading(true);
+                console.log('Loading user with token:', token); // ডিবাগ করার জন্য
+                
+                // token ডিকোড করুন
+                const tokenData = JSON.parse(atob(token.split('.')[1]));
+                const userId = tokenData.id;
+                
+                const response = await axiosInstance.get(`/users/${userId}`);
+                console.log('User response:', response.data); // ডিবাগ করার জন্য
+                
+                if (response.data?.data) {
+                    setUser(response.data.data);
+                } else {
+                    // যদি ইউজার না পাওয়া যায়, তাহলে টোকেন মুছে ফেলুন
+                    handleInvalidToken();
+                }
+            } catch (error) {
+                console.error('Failed to load user:', error);
+                
+                // যদি token invalid হয়, তাহলে সাইন আউট করুন
+                if (error.response?.status === 401 || error.message?.includes('jwt')) {
+                    handleInvalidToken();
+                    toast.error('Session expired. Please login again.');
+                }
+            } finally {
+                setLoading(false);
+                setInitialLoadDone(true);
             }
         };
 
         loadUser();
-    }, [token]); 
+    }, [token]);
+
+    // ইনভ্যালিড টোকেন হ্যান্ডেল করার ফাংশন
+    const handleInvalidToken = () => {
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+        }
+        setToken(null);
+        setUser(null);
+        delete axiosInstance.defaults.headers.common['Authorization'];
+    };
 
     // sign up
     const signup = async (userData) => {
@@ -126,7 +160,7 @@ export const AuthProvider = ({ children }) => {
                 }
             }
         } finally {
-            // ✅ শুধু browser এ localStorage clear
+            // localStorage clear
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('user');
                 localStorage.removeItem('token');
@@ -141,14 +175,12 @@ export const AuthProvider = ({ children }) => {
             delete axiosInstance.defaults.headers.common['Authorization'];
             toast.success('Logged out successfully');
             
-            // redirect - useRouter বা window.location
+            // redirect
             if (typeof window !== 'undefined') {
                 window.location.href = '/signin';
             }
         }
     };
-
-    // ... rest of your functions remain the same
 
     const updateUser = async (userId, data) => {
         try {
@@ -282,6 +314,7 @@ export const AuthProvider = ({ children }) => {
     const value = {
         user,
         loading,
+        initialLoadDone,
         token,
         isAuthenticated: !!user,
         

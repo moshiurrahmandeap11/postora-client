@@ -4,18 +4,23 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContexts/AuthContexts';
 
-
 const Header = () => {
-    const { user, signout } = useAuth();
+    const { user, signout, loading, initialLoadDone } = useAuth();
     const router = useRouter();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const [mounted, setMounted] = useState(false);
     const menuRef = useRef(null);
     const profileMenuRef = useRef(null);
 
+    // ক্লায়েন্ট সাইডে মাউন্ট হয়েছে কিনা চেক করুন
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     // navigation items
     const navItems = [
-        { name: 'Blogs', path: '/blogs' },
+        { name: 'Projects', path: '/projects' },
         { name: 'Videos', path: '/videos' },
         { name: 'Photos', path: '/photos' }
     ];
@@ -52,6 +57,62 @@ const Header = () => {
             .toUpperCase()
             .slice(0, 2);
     };
+
+    // মাউন্ট না হওয়া পর্যন্ত কিছু দেখাবেন না (SSR এর জন্য)
+    if (!mounted) {
+        return (
+            <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-green-200 dark:border-green-800 z-50">
+                <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between h-16 sm:h-20">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-green-600 to-green-500 rounded-lg"></div>
+                            <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+                                Post<span className="text-green-600 dark:text-green-400">Ora</span>
+                            </span>
+                        </div>
+                        <div className="w-10 h-10"></div>
+                    </div>
+                </nav>
+            </header>
+        );
+    }
+
+    // লোডিং অবস্থায় দেখান (কিন্তু initialLoadDone না হলে)
+    if (loading && !initialLoadDone) {
+        return (
+            <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-green-200 dark:border-green-800 z-50">
+                <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex items-center justify-between h-16 sm:h-20">
+                        {/* Logo */}
+                        <Link href="/" className="flex items-center gap-2 group">
+                            <div className="relative">
+                                <div className="absolute inset-0 bg-green-500 dark:bg-green-400 rounded-lg blur opacity-50"></div>
+                                <div className="relative w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-green-600 to-green-500 dark:from-green-500 dark:to-green-400 rounded-lg flex items-center justify-center">
+                                    <span className="text-white dark:text-black font-bold text-lg sm:text-xl">P</span>
+                                </div>
+                            </div>
+                            <span className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+                                Post<span className="text-green-600 dark:text-green-400">Ora</span>
+                            </span>
+                        </Link>
+
+                        {/* Loading Skeleton */}
+                        <div className="hidden md:flex items-center gap-8">
+                            <div className="flex items-center gap-6">
+                                {[1, 2, 3].map((i) => (
+                                    <div key={i} className="w-16 h-5 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                                ))}
+                            </div>
+                            <div className="w-24 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse"></div>
+                        </div>
+
+                        {/* Mobile Menu Button Skeleton */}
+                        <div className="md:hidden w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
+                    </div>
+                </nav>
+            </header>
+        );
+    }
 
     return (
         <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-green-200 dark:border-green-800 z-50">
@@ -109,7 +170,7 @@ const Header = () => {
                                     
                                     {/* User Name */}
                                     <span className="text-gray-900 dark:text-white font-medium">
-                                        {user.name.split(' ')[0]}
+                                        {user.name?.split(' ')[0] || 'User'}
                                     </span>
                                     
                                     {/* Dropdown Icon */}
